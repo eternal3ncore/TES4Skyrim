@@ -1,0 +1,174 @@
+Oblivion Dialogue – Idle Chatter With Exceptions
+Converter Implementation Note
+===============================================
+
+Purpose
+-------
+Enable Skyrim idle chatter on converted Oblivion AI packages, while preventing
+idle chatter from interrupting package states where conversation is inappropriate.
+
+Core flag
+---------
+The relevant Skyrim PACK / PKDT interrupt flag is:
+
+    Allow Idle Chatter = 0x0080
+
+Default converter behavior
+--------------------------
+For eligible converted PACK records:
+
+    interruptFlags |= 0x0080;
+
+Preserve every existing interrupt flag. Do not replace the whole field unless
+the converter is already constructing the field from scratch.
+
+Exception behavior
+------------------
+Do NOT enable Allow Idle Chatter on packages whose role clearly represents a
+non-conversational state.
+
+The verified exception-aware test plugin excludes PACK records whose EDID
+indicates any of the following categories:
+
+    - Sleep
+    - Fight
+    - Combat
+    - Flee
+    - Evade
+    - Attack
+    - Ambush
+    - Battle
+    - Arrest
+    - Execution / Execute
+    - Unconscious
+    - Knockout
+    - Explicit death-position behavior
+
+Special case:
+    A package containing "NoSleep" is NOT treated as a sleep package.
+
+Normal packages that remain eligible
+------------------------------------
+Do not broadly suppress idle chatter from ordinary behavioral packages merely
+because they are active.
+
+The verified plugin leaves idle chatter enabled on normal package roles such as:
+
+    - Wander
+    - Eat
+    - Patrol
+    - Guard
+    - Travel
+    - Wait
+    - Worship
+    - Follow
+    - Sandbox / ordinary idle behavior
+
+Implementation logic
+--------------------
+For each converted PACK:
+
+1. Convert the package normally.
+2. Read the PACK EDID and current PKDT interrupt flags.
+3. Determine whether the package belongs to an excluded category.
+4. If excluded:
+       interruptFlags &= ~0x0080;
+5. Otherwise:
+       interruptFlags |= 0x0080;
+6. Preserve all other PKDT flags.
+7. Preserve every other PACK field unchanged.
+
+Pseudo-code
+-----------
+bool IsIdleChatterExcluded(string edid)
+{
+    string s = ToLower(edid);
+
+    if (Contains(s, "sleep") && !Contains(s, "nosleep"))
+        return true;
+
+    if (ContainsAny(s,
+        "fight",
+        "combat",
+        "flee",
+        "evade",
+        "attack",
+        "ambush",
+        "battle",
+        "arrest",
+        "execution",
+        "execute",
+        "unconscious",
+        "knockout",
+        "deathspot"))
+    {
+        return true;
+    }
+
+    return false;
+}
+
+flags = convertedPack.PKDT.interruptFlags;
+
+if (IsIdleChatterExcluded(convertedPack.EDID))
+    flags &= ~0x0080;
+else
+    flags |= 0x0080;
+
+convertedPack.PKDT.interruptFlags = flags;
+
+Strict scope boundary
+---------------------
+This feature must modify only the Allow Idle Chatter bit in the PACK PKDT
+interrupt-flags field.
+
+Do not change:
+
+    - package type
+    - procedure
+    - schedule
+    - conditions
+    - target data
+    - location data
+    - procedure-tree data
+    - quest/package ownership
+    - NPC package lists
+    - dialogue records
+    - factions
+    - races
+    - cells/worldspaces
+    - scripts
+    - combat data
+    - any other record type
+
+Verified test-plugin behavior
+-----------------------------
+The exception-aware plugin was produced from the previously isolated Idle
+Chatter-only plugin.
+
+Total PACK overrides:
+    6,989
+
+PACK records retaining Allow Idle Chatter:
+    6,086
+
+PACK records with Allow Idle Chatter removed due to exceptions:
+    903
+
+Validation:
+    - No records were added.
+    - No records were removed.
+    - File size remained unchanged.
+    - Exactly 903 bytes changed.
+    - Each changed byte corresponds to removing only the 0x0080 bit from one
+      excluded PACK's PKDT interrupt flags.
+    - All non-excluded PACK records remained byte-identical.
+
+Converter directive
+-------------------
+When converting Oblivion PACK records to Skyrim, enable PKDT Allow Idle Chatter
+(0x0080) on normal packages while preserving all existing package data and flags.
+Do not enable it on clearly non-conversational packages such as sleep, combat,
+fight, flee, attack, ambush, battle, arrest, unconscious, execution, knockout,
+or explicit death-position packages. Modify no other field as part of this
+feature.
